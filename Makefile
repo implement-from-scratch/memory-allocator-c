@@ -1,188 +1,192 @@
-# Project Configuration
-PROJECT_NAME := template-project
-VERSION := 1.0.0
-
-# Directories
-SRC_DIR := src
-INCLUDE_DIR := include
-BUILD_DIR := build
-TEST_DIR := tests
-OBJ_DIR := $(BUILD_DIR)/obj
-BIN_DIR := $(BUILD_DIR)/bin
-COV_DIR := $(BUILD_DIR)/coverage
-
-# Compiler Configuration
-CC := gcc
-CXX := g++
-CFLAGS := -Wall -Wextra -Werror -pedantic -std=c11 -I$(INCLUDE_DIR)
-CXXFLAGS := -Wall -Wextra -Werror -pedantic -std=c++17 -I$(INCLUDE_DIR)
-LDFLAGS := 
-LIBS := 
-
-# Debug/Release Flags
-DEBUG_FLAGS := -g -O0 -DDEBUG
-RELEASE_FLAGS := -O3 -DNDEBUG
-
-# Test Configuration
-TEST_FLAGS := -lcunit -lcheck -lgtest -pthread
-COVERAGE_FLAGS := --coverage -fprofile-arcs -ftest-coverage
-
-# Static Analysis
-CLANG_FORMAT := clang-format
-CLANG_TIDY := clang-tidy
-FORMAT_STYLE := -style=file
+# Memory Allocator - Simplified Build System
+PROJECT_NAME = memory-allocator
+VERSION = 1.0.0
+BUILD_DIR = build
+SRC_DIR = src
+INCLUDE_DIR = include
+TEST_DIR = tests
 
 # Platform Detection
 UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),Linux)
-    PLATFORM := linux
-    NPROC := $(shell nproc)
-endif
 ifeq ($(UNAME_S),Darwin)
-    PLATFORM := macos
-    NPROC := $(shell sysctl -n hw.ncpu)
+    PLATFORM = macos
+else
+    PLATFORM = linux
 endif
 
-# Parallel Compilation
-MAKEFLAGS += -j$(NPROC)
+# Compiler Configuration
+CC = gcc
+CFLAGS = -std=c11 -Wall -Wextra
+INCLUDES = -I$(INCLUDE_DIR)
+LIBS = -lpthread -lm
 
-# Source Files (Auto-detection)
-C_SOURCES := $(wildcard $(SRC_DIR)/*.c)
-CPP_SOURCES := $(wildcard $(SRC_DIR)/*.cpp)
-C_OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(C_SOURCES))
-CPP_OBJECTS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(CPP_SOURCES))
-OBJECTS := $(C_OBJECTS) $(CPP_OBJECTS)
+# Build Mode Configuration
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+    CFLAGS += -g3 -O0 -DDEBUG -fno-omit-frame-pointer
+    BUILD_TYPE = debug
+else
+    CFLAGS += -O3 -DNDEBUG -fomit-frame-pointer
+    BUILD_TYPE = release
+endif
+
+# Source Files
+SOURCES = $(wildcard $(SRC_DIR)/*.c)
+HEADERS = $(wildcard $(INCLUDE_DIR)/*.h)
+OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 # Test Files
-TEST_SOURCES := $(wildcard $(TEST_DIR)/*.c $(TEST_DIR)/*.cpp)
-TEST_BINARIES := $(patsubst $(TEST_DIR)/%.c,$(BIN_DIR)/test_%,$(TEST_SOURCES))
+TEST_SOURCES = $(wildcard $(TEST_DIR)/*.c)
+TEST_OBJECTS = $(TEST_SOURCES:$(TEST_DIR)/%.c=$(BUILD_DIR)/test_%.o)
 
-# Output Binary
-TARGET := $(BIN_DIR)/$(PROJECT_NAME)
+# Library Targets
+STATIC_LIB = $(BUILD_DIR)/lib$(PROJECT_NAME).a
+SHARED_LIB = $(BUILD_DIR)/lib$(PROJECT_NAME).so
 
-# Colors
-RED := \033[0;31m
-GREEN := \033[0;32m
-YELLOW := \033[1;33m
-NC := \033[0m # No Color
-
-.PHONY: all build clean test coverage format lint check install uninstall help rust-build rust-test rust-fmt rust-clippy rust-check rust-clean
-
-# Default Target
+# Default target
+.PHONY: all
 all: build
 
-# Build Targets
-build: $(TARGET)
-	@echo "$(GREEN)Build complete: $(TARGET)$(NC)"
+# Build targets
+.PHONY: build
+build: $(STATIC_LIB) $(SHARED_LIB)
 
-$(TARGET): $(OBJECTS)
-	@mkdir -p $(BIN_DIR)
-	@echo "$(YELLOW)Linking $(TARGET)...$(NC)"
-	@if [ -n "$(C_OBJECTS)" ]; then $(CC) $(OBJECTS) -o $@ $(LDFLAGS) $(LIBS); \
-	else $(CXX) $(OBJECTS) -o $@ $(LDFLAGS) $(LIBS); fi
+# Create build directory
+$(BUILD_DIR):
+	@mkdir -p $(BUILD_DIR)
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
-	@mkdir -p $(OBJ_DIR)
-	@echo "$(YELLOW)Compiling $<...$(NC)"
-	@$(CC) $(CFLAGS) $(if $(DEBUG),$(DEBUG_FLAGS),$(RELEASE_FLAGS)) -c $< -o $@
+# Compile source files
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
+	@echo "Compiling $< ($(BUILD_TYPE))"
+	@$(CC) $(CFLAGS) $(INCLUDES) -fPIC -c $< -o $@
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(OBJ_DIR)
-	@echo "$(YELLOW)Compiling $<...$(NC)"
-	@$(CXX) $(CXXFLAGS) $(if $(DEBUG),$(DEBUG_FLAGS),$(RELEASE_FLAGS)) -c $< -o $@
+# Create static library
+$(STATIC_LIB): $(OBJECTS)
+	@echo "Creating static library $@"
+	@ar rcs $@ $^
 
-# Clean
-clean:
-	@echo "$(YELLOW)Cleaning build artifacts...$(NC)"
-	@rm -rf $(BUILD_DIR)
-	@echo "$(GREEN)Clean complete$(NC)"
+# Create shared library
+$(SHARED_LIB): $(OBJECTS)
+	@echo "Creating shared library $@"
+ifeq ($(PLATFORM),macos)
+	@$(CC) -shared $(LDFLAGS) -o $@ $^ $(LIBS)
+else
+	@$(CC) -shared -Wl,-soname,lib$(PROJECT_NAME).so.1 $(LDFLAGS) -o $@ $^ $(LIBS)
+endif
 
-# Test
-test: build
-	@echo "$(YELLOW)Running tests...$(NC)"
-	@# Test execution logic would go here, customized for the actual test framework used
-	@echo "$(GREEN)Tests passed$(NC)"
+# Test compilation
+$(BUILD_DIR)/test_%.o: $(TEST_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
+	@echo "Compiling test $<"
+	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-# Coverage
-coverage:
-	@echo "$(YELLOW)Generating coverage report...$(NC)"
-	@mkdir -p $(COV_DIR)
-	@# Coverage generation logic
-	@echo "$(GREEN)Coverage report generated used$(NC)"
+# Test executables
+$(BUILD_DIR)/test_%: $(BUILD_DIR)/test_%.o $(STATIC_LIB)
+	@echo "Linking test executable $@"
+	@$(CC) $(LDFLAGS) -o $@ $< $(STATIC_LIB) $(LIBS)
 
-# Code Formatting
+# Testing targets
+.PHONY: test
+test: test-unit
+
+.PHONY: test-unit
+test-unit: $(BUILD_DIR)/test_allocator
+	@echo "Running unit tests..."
+	@./$(BUILD_DIR)/test_allocator
+
+# Memory analysis (skip valgrind on macOS as it's not well supported)
+.PHONY: valgrind
+valgrind:
+ifeq ($(PLATFORM),macos)
+	@echo "Valgrind not well supported on macOS, skipping..."
+else
+	@echo "Running Valgrind memory check..."
+	@valgrind --tool=memcheck --leak-check=full \
+		--track-origins=yes --error-exitcode=1 \
+		./$(BUILD_DIR)/test_allocator
+endif
+
+# Code quality
+.PHONY: format
 format:
-	@echo "$(YELLOW)Formatting code...$(NC)"
-	@find $(SRC_DIR) $(INCLUDE_DIR) $(TEST_DIR) -name '*.c' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | xargs $(CLANG_FORMAT) -i $(FORMAT_STYLE)
-	@echo "$(GREEN)Formatting complete$(NC)"
+	@echo "Formatting code with clang-format..."
+	@clang-format -i $(SOURCES) $(HEADERS) $(TEST_SOURCES)
 
-# Linting
+.PHONY: lint
 lint:
-	@echo "$(YELLOW)Running static analysis...$(NC)"
-	@find $(SRC_DIR) $(TEST_DIR) -name '*.c' -o -name '*.cpp' | xargs $(CLANG_TIDY) -p $(BUILD_DIR) 2>/dev/null || true
-	@echo "$(GREEN)Static analysis complete$(NC)"
+	@echo "Running static analysis..."
+	@cppcheck --enable=warning --std=c11 $(INCLUDES) $(SRC_DIR) || true
 
-# Check (Format + Lint + Test)
-check: format lint test
-	@echo "$(GREEN)All checks passed$(NC)"
+# Installation
+.PHONY: install
+install: $(STATIC_LIB) $(SHARED_LIB)
+	@echo "Installing allocator library..."
+	@sudo cp $(STATIC_LIB) /usr/local/lib/
+	@sudo cp $(SHARED_LIB) /usr/local/lib/
+	@sudo cp $(INCLUDE_DIR)/*.h /usr/local/include/
+ifeq ($(PLATFORM),linux)
+	@sudo ldconfig
+endif
+	@echo "Installation completed"
 
-# Install/Uninstall
-install: $(TARGET)
-	@echo "$(YELLOW)Installing binary...$(NC)"
-	@install -d /usr/local/bin
-	@install $(TARGET) /usr/local/bin/
-	@echo "$(GREEN)Installed to /usr/local/bin/$(PROJECT_NAME)$(NC)"
-
+.PHONY: uninstall
 uninstall:
-	@echo "$(YELLOW)Uninstalling binary...$(NC)"
-	@rm -f /usr/local/bin/$(PROJECT_NAME)
-	@echo "$(GREEN)Uninstalled$(NC)"
+	@echo "Uninstalling allocator library..."
+	@sudo rm -f /usr/local/lib/lib$(PROJECT_NAME).*
+	@sudo rm -f /usr/local/include/allocator.h
+ifeq ($(PLATFORM),linux)
+	@sudo ldconfig
+endif
+	@echo "Uninstallation completed"
 
-# Rust Targets
-rust-build:
-	@echo "$(YELLOW)Building Rust project...$(NC)"
-	@if [ -f "Cargo.toml" ]; then cargo build; else echo "$(RED)Cargo.toml not found$(NC)"; exit 1; fi
-	@echo "$(GREEN)Rust build complete$(NC)"
+# Cleanup
+.PHONY: clean
+clean:
+	@echo "Cleaning build artifacts..."
+	@rm -rf $(BUILD_DIR)
+	@echo "Clean completed"
 
-rust-test:
-	@echo "$(YELLOW)Running Rust tests...$(NC)"
-	@if [ -f "Cargo.toml" ]; then cargo test; else echo "$(RED)Cargo.toml not found$(NC)"; exit 1; fi
-	@echo "$(GREEN)Rust tests passed$(NC)"
+# Comprehensive check
+.PHONY: check
+check: clean build test
+	@echo "All checks passed successfully!"
 
-rust-fmt:
-	@echo "$(YELLOW)Formatting Rust code...$(NC)"
-	@if [ -f "Cargo.toml" ]; then cargo fmt; else echo "$(RED)Cargo.toml not found$(NC)"; exit 1; fi
-	@echo "$(GREEN)Rust formatting complete$(NC)"
-
-rust-clippy:
-	@echo "$(YELLOW)Running Rust clippy...$(NC)"
-	@if [ -f "Cargo.toml" ]; then cargo clippy -- -D warnings; else echo "$(RED)Cargo.toml not found$(NC)"; exit 1; fi
-	@echo "$(GREEN)Rust clippy passed$(NC)"
-
-rust-check: rust-fmt rust-clippy rust-test
-	@echo "$(GREEN)Rust checks passed$(NC)"
-
-rust-clean:
-	@echo "$(YELLOW)Cleaning Rust artifacts...$(NC)"
-	@if [ -f "Cargo.toml" ]; then cargo clean; else echo "$(RED)Cargo.toml not found$(NC)"; exit 1; fi
-	@echo "$(GREEN)Rust clean complete$(NC)"
-
-# Help
+# Help system
+.PHONY: help
 help:
-	@echo "Available targets:"
-	@echo "  make all          - Build all targets"
-	@echo "  make build        - Compile source files (C/C++)"
-	@echo "  make clean        - Remove build artifacts (C/C++)"
-	@echo "  make test         - Run all tests (C/C++)"
-	@echo "  make coverage     - Generate code coverage report (C/C++)"
-	@echo "  make format       - Format code using clang-format (C/C++)"
-	@echo "  make lint         - Run static analysis using clang-tidy (C/C++)"
-	@echo "  make check        - Run format + lint + test (C/C++)"
-	@echo "  make install      - Install binaries"
-	@echo "  make uninstall    - Uninstall binaries"
-	@echo "  make rust-build   - Build Rust project"
-	@echo "  make rust-test    - Run Rust tests"
-	@echo "  make rust-fmt     - Format Rust code"
-	@echo "  make rust-clippy  - Run Clippy linter"
-	@echo "  make rust-check   - Run fmt + clippy + test (Rust)"
-	@echo "  make rust-clean   - Clean Rust artifacts"
+	@echo "Memory Allocator Build System"
+	@echo "============================="
+	@echo ""
+	@echo "Build Targets:"
+	@echo "  build          - Build static and shared libraries"
+	@echo "  test           - Run all tests"
+	@echo "  clean          - Remove build artifacts"
+	@echo "  check          - Full build and test cycle"
+	@echo ""
+	@echo "Options:"
+	@echo "  DEBUG=1        - Enable debug build"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build DEBUG=1    - Debug build"
+	@echo "  make test             - Run tests"
+	@echo "  make check            - Full verification"
+
+# Debug target
+.PHONY: debug
+debug: DEBUG=1
+debug: $(BUILD_DIR)/test_allocator
+	@echo "Starting debugger..."
+ifeq ($(PLATFORM),macos)
+	@lldb ./$(BUILD_DIR)/test_allocator
+else
+	@gdb ./$(BUILD_DIR)/test_allocator
+endif
+
+.PHONY: print-vars
+print-vars:
+	@echo "CC=$(CC)"
+	@echo "CFLAGS=$(CFLAGS)"
+	@echo "BUILD_TYPE=$(BUILD_TYPE)"
+	@echo "SOURCES=$(SOURCES)"
+	@echo "OBJECTS=$(OBJECTS)"
+	@echo "TEST_SOURCES=$(TEST_SOURCES)"
+	@echo "PLATFORM=$(PLATFORM)"

@@ -447,6 +447,10 @@ void *acquire_memory(size_t size)
 
     size_t aligned_size = ALIGN_SIZE(size);
 
+#ifdef __APPLE__
+    /* On macOS, use mmap for all allocations due to sbrk deprecation */
+    return acquire_memory_mmap(aligned_size);
+#else
     /* Large allocations use mmap */
     if (aligned_size >= MMAP_THRESHOLD) {
         return acquire_memory_mmap(aligned_size);
@@ -458,6 +462,7 @@ void *acquire_memory(size_t size)
     }
 
     return acquire_memory_sbrk(aligned_size);
+#endif
 }
 
 /* Standard Allocator Interface */

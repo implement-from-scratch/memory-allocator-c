@@ -30,6 +30,20 @@ else
     BUILD_TYPE = release
 endif
 
+# Sanitizer Support (for Linux CI)
+ifdef SANITIZER
+    ifeq ($(SANITIZER),address)
+        CFLAGS += -fsanitize=address -fno-omit-frame-pointer
+        LIBS += -fsanitize=address
+    else ifeq ($(SANITIZER),undefined)
+        CFLAGS += -fsanitize=undefined -fno-omit-frame-pointer
+        LIBS += -fsanitize=undefined
+    else ifeq ($(SANITIZER),thread)
+        CFLAGS += -fsanitize=thread -fno-omit-frame-pointer
+        LIBS += -fsanitize=thread
+    endif
+endif
+
 # Source Files
 SOURCES = $(wildcard $(SRC_DIR)/*.c)
 HEADERS = $(wildcard $(INCLUDE_DIR)/*.h)
@@ -93,9 +107,15 @@ test-unit: $(BUILD_DIR)/test_allocator
 	@echo "Running unit tests..."
 	@./$(BUILD_DIR)/test_allocator
 
+.PHONY: integration-test
+integration-test: test-unit
+	@echo "Running integration tests..."
+	@echo "Integration tests are currently the same as unit tests"
+	@./$(BUILD_DIR)/test_allocator
+
 # Memory analysis (skip valgrind on macOS as it's not well supported)
 .PHONY: valgrind
-valgrind:
+valgrind: $(BUILD_DIR)/test_allocator
 ifeq ($(PLATFORM),macos)
 	@echo "Valgrind not well supported on macOS, skipping..."
 else
@@ -105,16 +125,59 @@ else
 		./$(BUILD_DIR)/test_allocator
 endif
 
+# Code coverage (Linux only, requires gcc and lcov)
+.PHONY: coverage
+coverage:
+ifeq ($(PLATFORM),macos)
+	@echo "Coverage analysis not configured for macOS, skipping..."
+else
+	@echo "Building with coverage instrumentation..."
+	@$(MAKE) clean
+	@$(MAKE) build DEBUG=1 CFLAGS="$(CFLAGS) --coverage -fprofile-arcs -ftest-coverage"
+	@echo "Running tests with coverage..."
+	@./$(BUILD_DIR)/test_allocator || true
+	@echo "Generating coverage report..."
+	@mkdir -p coverage
+	@lcov --capture --directory $(BUILD_DIR) --output-file coverage/coverage.info --no-external
+	@genhtml coverage/coverage.info --output-directory coverage/html
+	@echo "Coverage report generated in coverage/html/index.html"
+endif
+
 # Code quality
 .PHONY: format
 format:
 	@echo "Formatting code with clang-format..."
 	@clang-format -i $(SOURCES) $(HEADERS) $(TEST_SOURCES)
 
+.PHONY: format-check
+format-check:
+	@echo "Checking code formatting..."
+	@if command -v clang-format >/dev/null 2>&1; then \
+		for file in $(SOURCES) $(HEADERS) $(TEST_SOURCES); do \
+			if [ -f "$$file" ]; then \
+				if ! clang-format "$$file" | diff -q "$$file" - >/dev/null 2>&1; then \
+					echo "[ERROR] $$file is not properly formatted"; \
+					echo "Run 'make format' to fix formatting issues"; \
+					exit 1; \
+				fi; \
+			fi; \
+		done; \
+		echo "[OK] All files are properly formatted"; \
+	else \
+		echo "[WARN] clang-format not found, skipping format check"; \
+	fi
+
 .PHONY: lint
 lint:
 	@echo "Running static analysis..."
-	@cppcheck --enable=warning --std=c11 $(INCLUDES) $(SRC_DIR) || true
+	@if command -v clang-tidy >/dev/null 2>&1; then \
+		echo "Running clang-tidy..."; \
+		clang-tidy $(SOURCES) -- $(CFLAGS) $(INCLUDES) -std=c11 || true; \
+	fi
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		echo "Running cppcheck..."; \
+		cppcheck --enable=warning --std=c11 $(INCLUDES) $(SRC_DIR) || true; \
+	fi
 
 # Installation
 .PHONY: install

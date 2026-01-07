@@ -38,8 +38,6 @@ jobs:
             cppcheck \
             valgrind \
             lcov \
-            libcunit1-dev \
-            libcheck-dev \
             bear
       
       - name: Set Compiler

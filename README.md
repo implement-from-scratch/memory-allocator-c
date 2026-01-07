@@ -21,7 +21,7 @@ Heap Memory Organization:
 +------------------+
 | Heap Metadata    |  <- Global heap state, free lists
 | - free_head      |
-| - used_head      |  
+| - used_head      |
 | - heap_start     |
 | - heap_end       |
 +------------------+
@@ -37,7 +37,7 @@ Heap Memory Organization:
 
 Block Header Layout (16 bytes):
 Offset 0:  size_t size           (8 bytes)
-Offset 8:  uint32_t is_free      (4 bytes)  
+Offset 8:  uint32_t is_free      (4 bytes)
 Offset 12: uint32_t magic        (4 bytes)
 
 Free Block Extensions:
@@ -111,40 +111,6 @@ make lint
 make check
 ```
 
-This comprehensive check includes:
-1. Code formatting verification (clang-format)
-2. Static analysis (clang-tidy, cppcheck)
-3. Build verification (debug and release)
-4. Unit test suite
-5. Integration tests
-6. Memory leak detection (valgrind)
-7. Thread safety tests
-8. Performance regression tests
-
-### Code Style
-This project follows strict coding standards enforced by [.clang-format](.clang-format):
-- 4-space indentation
-- 100-character line limit
-- Consistent pointer alignment
-- Comprehensive commenting for complex algorithms
-
-### Pull Request Process
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/advanced-coalescing`)
-3. Implement changes following chapter-based development
-4. Add corresponding tests and documentation
-5. Run `make check` to ensure all verifications pass
-6. Commit with descriptive messages (`git commit -m 'Implement bidirectional coalescing with boundary checks'`)
-7. Push to branch (`git push origin feature/advanced-coalescing`)
-8. Open Pull Request with detailed description
-
-All PRs require:
-- Approval from @mohitmishra786
-- All CI checks passing (build, test, lint)
-- Code coverage maintained above 90%
-- Memory leak free verification
-- Performance impact analysis
-
 ## Testing
 
 ### Test Categories
@@ -152,7 +118,7 @@ All PRs require:
 # Core functionality tests
 make test-unit
 
-# Multi-threaded stress tests  
+# Multi-threaded stress tests
 make test-threading
 
 # Memory integrity verification
@@ -195,7 +161,7 @@ GitHub Actions pipeline includes:
 The implementation follows incremental learning chapters:
 
 - **[Chapter 01](docs/01-memory-fundamentals.md)**: Memory Fundamentals and Architecture Design
-- **[Chapter 02](docs/02-block-structure.md)**: Block Headers and Alignment Mathematics  
+- **[Chapter 02](docs/02-block-structure.md)**: Block Headers and Alignment Mathematics
 - **[Chapter 03](docs/03-memory-sourcing.md)**: Kernel Memory Acquisition (sbrk vs mmap)
 - **[Chapter 04](docs/04-basic-malloc.md)**: Basic malloc Implementation
 - **[Chapter 05](docs/05-coalescing-free.md)**: Advanced Free with Coalescing

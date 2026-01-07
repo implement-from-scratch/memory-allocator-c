@@ -49,7 +49,7 @@ int munmap(void* addr, size_t length);
 
 For anonymous allocations, we use:
 ```c
-void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, 
+void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 ```
 
@@ -63,6 +63,8 @@ $$\text{Memory Source} = \begin{cases}
 \end{cases}$$
 
 ### Memory Sourcing Interface
+
+The memory sourcing interface provides the data structures and constants needed to implement our hybrid strategy. We maintain a registry of allocated memory regions to support pointer validation and debugging. The interface defines thresholds that determine when to use sbrk versus mmap, and tracks all memory regions for proper cleanup. The implementation:
 
 ```c
 #include "allocator.h"
@@ -90,20 +92,20 @@ static pthread_mutex_t region_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 ### sbrk() Implementation
 
-The `sbrk()` implementation must handle alignment, error conditions, and heap extension efficiently:
+The `sbrk()` function requests memory from the kernel by extending the program break. Our implementation must handle system call failures, ensure proper alignment of returned memory, and maintain heap tracking information. Error handling is critical because sbrk() can fail when system memory is exhausted or when the heap segment cannot grow further. The `sbrk()` implementation must handle alignment, error conditions, and heap extension efficiently:
 
 ```c
 void* acquire_memory_sbrk(size_t size) {
     /* Ensure size is aligned to prevent fragmentation */
     size_t aligned_size = ALIGN_SIZE(size);
-    
+
     /* Get current program break */
     void* current_break = sbrk(0);
     if (current_break == (void*)-1) {
         last_error = ALLOC_ERROR_OUT_OF_MEMORY;
         return NULL;
     }
-    
+
     /* Attempt to extend heap */
     void* new_break = sbrk(aligned_size);
     if (new_break == (void*)-1) {
@@ -113,17 +115,17 @@ void* acquire_memory_sbrk(size_t size) {
         }
         return NULL;
     }
-    
+
     /* Update heap tracking information */
     if (heap.heap_start == NULL) {
         heap.heap_start = current_break;
     }
     heap.heap_end = (char*)current_break + aligned_size;
     heap.program_break = heap.heap_end;
-    
+
     /* Register memory region for validation */
     register_memory_region(current_break, aligned_size, false);
-    
+
     return current_break;
 }
 ```
@@ -139,9 +141,9 @@ static pthread_mutex_t pool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void* acquire_memory_sbrk_optimized(size_t size) {
     size_t aligned_size = ALIGN_SIZE(size);
-    
+
     pthread_mutex_lock(&pool_mutex);
-    
+
     /* Try to satisfy request from existing pool */
     if (heap_extension_pool && pool_remaining >= aligned_size) {
         void* result = heap_extension_pool;
@@ -150,32 +152,32 @@ void* acquire_memory_sbrk_optimized(size_t size) {
         pthread_mutex_unlock(&pool_mutex);
         return result;
     }
-    
+
     /* Pool exhausted or insufficient - extend heap */
-    size_t extension_size = (aligned_size > HEAP_EXTENSION_SIZE) 
-                           ? aligned_size 
+    size_t extension_size = (aligned_size > HEAP_EXTENSION_SIZE)
+                           ? aligned_size
                            : HEAP_EXTENSION_SIZE;
-    
+
     void* new_memory = sbrk(extension_size);
     if (new_memory == (void*)-1) {
         pthread_mutex_unlock(&pool_mutex);
         last_error = ALLOC_ERROR_OUT_OF_MEMORY;
         return NULL;
     }
-    
+
     /* Update global heap information */
     if (heap.heap_start == NULL) {
         heap.heap_start = new_memory;
     }
     heap.heap_end = (char*)new_memory + extension_size;
-    
+
     /* Initialize pool with remaining memory */
     void* result = new_memory;
     heap_extension_pool = (char*)new_memory + aligned_size;
     pool_remaining = extension_size - aligned_size;
-    
+
     register_memory_region(new_memory, extension_size, false);
-    
+
     pthread_mutex_unlock(&pool_mutex);
     return result;
 }
@@ -189,13 +191,13 @@ Large allocations use `mmap()` to avoid heap fragmentation and enable immediate 
 void* acquire_memory_mmap(size_t size) {
     /* Round up to page boundary for mmap efficiency */
     size_t page_aligned_size = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-    
+
     /* Create anonymous memory mapping */
     void* ptr = mmap(NULL, page_aligned_size,
                      PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS,
                      -1, 0);
-    
+
     if (ptr == MAP_FAILED) {
         /* Handle various error conditions */
         switch (errno) {
@@ -210,28 +212,28 @@ void* acquire_memory_mmap(size_t size) {
         }
         return NULL;
     }
-    
+
     /* Register memory region for validation */
     register_memory_region(ptr, page_aligned_size, true);
-    
+
     return ptr;
 }
 
 int release_memory_mmap(void* ptr, size_t size) {
     if (!ptr) return -1;
-    
+
     /* Find the memory region to get actual size */
     memory_region_t* region = find_memory_region(ptr);
     if (!region || !region->is_mmap) {
         last_error = ALLOC_ERROR_INVALID_POINTER;
         return -1;
     }
-    
+
     /* Unmap the memory */
     if (munmap(ptr, region->size) == -1) {
         return -1;
     }
-    
+
     /* Remove from tracking */
     unregister_memory_region(ptr);
     return 0;
@@ -246,11 +248,11 @@ To support pointer validation and debugging, we maintain a registry of allocated
 static void register_memory_region(void* start, size_t size, bool is_mmap) {
     memory_region_t* region = malloc(sizeof(memory_region_t));
     if (!region) return;  /* Best effort tracking */
-    
+
     region->start = start;
     region->size = size;
     region->is_mmap = is_mmap;
-    
+
     pthread_mutex_lock(&region_mutex);
     region->next = memory_regions;
     memory_regions = region;
@@ -259,26 +261,26 @@ static void register_memory_region(void* start, size_t size, bool is_mmap) {
 
 static memory_region_t* find_memory_region(void* ptr) {
     pthread_mutex_lock(&region_mutex);
-    
+
     memory_region_t* current = memory_regions;
     while (current) {
         char* start = (char*)current->start;
         char* end = start + current->size;
-        
+
         if (ptr >= current->start && ptr < (void*)end) {
             pthread_mutex_unlock(&region_mutex);
             return current;
         }
         current = current->next;
     }
-    
+
     pthread_mutex_unlock(&region_mutex);
     return NULL;
 }
 
 static void unregister_memory_region(void* start) {
     pthread_mutex_lock(&region_mutex);
-    
+
     memory_region_t** current = &memory_regions;
     while (*current) {
         if ((*current)->start == start) {
@@ -289,7 +291,7 @@ static void unregister_memory_region(void* start) {
         }
         current = &(*current)->next;
     }
-    
+
     pthread_mutex_unlock(&region_mutex);
 }
 ```
@@ -307,17 +309,17 @@ typedef enum {
 
 memory_source_t select_memory_source(size_t size) {
     size_t aligned_size = ALIGN_SIZE(size);
-    
+
     /* Large allocations always use mmap */
     if (aligned_size >= MMAP_THRESHOLD) {
         return MEMORY_SOURCE_MMAP;
     }
-    
+
     /* For smaller allocations, prefer sbrk unless heap is fragmented */
     if (should_use_mmap_for_small_allocation(aligned_size)) {
         return MEMORY_SOURCE_MMAP;
     }
-    
+
     return MEMORY_SOURCE_SBRK;
 }
 
@@ -327,19 +329,19 @@ static bool should_use_mmap_for_small_allocation(size_t size) {
      * 2. sbrk() has been failing recently
      * 3. Memory pressure is high
      */
-    
+
     pthread_mutex_lock(&heap.heap_mutex);
-    
+
     /* Check fragmentation ratio */
     if (heap.total_free > 0) {
-        double fragmentation_ratio = (double)heap.total_free / 
+        double fragmentation_ratio = (double)heap.total_free /
                                    (double)(heap.total_allocated + heap.total_free);
         if (fragmentation_ratio > 0.3) {  /* >30% fragmentation */
             pthread_mutex_unlock(&heap.heap_mutex);
             return true;
         }
     }
-    
+
     pthread_mutex_unlock(&heap.heap_mutex);
     return false;
 }
@@ -355,16 +357,16 @@ void* acquire_memory(size_t size) {
         last_error = ALLOC_ERROR_INVALID_SIZE;
         return NULL;
     }
-    
+
     memory_source_t source = select_memory_source(size);
-    
+
     switch (source) {
         case MEMORY_SOURCE_SBRK:
             return acquire_memory_sbrk_optimized(size);
-            
+
         case MEMORY_SOURCE_MMAP:
             return acquire_memory_mmap(size);
-            
+
         default:
             last_error = ALLOC_ERROR_OUT_OF_MEMORY;
             return NULL;
@@ -373,13 +375,13 @@ void* acquire_memory(size_t size) {
 
 void release_memory(void* ptr, size_t size) {
     if (!ptr) return;
-    
+
     memory_region_t* region = find_memory_region(ptr);
     if (!region) {
         last_error = ALLOC_ERROR_INVALID_POINTER;
         return;
     }
-    
+
     if (region->is_mmap) {
         release_memory_mmap(ptr, region->size);
     }
@@ -425,7 +427,7 @@ static size_t calculate_optimal_threshold(void) {
     const double syscall_cost_us = 10.0;         /* mmap syscall cost */
     const double fragmentation_factor = 0.15;    /* 15% fragmentation penalty */
     const double allocation_rate_hz = 100000.0;  /* Allocations per second */
-    
+
     /* Threshold where fragmentation cost equals syscall cost */
     return (size_t)(syscall_cost_us * allocation_rate_hz / fragmentation_factor);
 }
@@ -447,20 +449,20 @@ static memory_stats_t mem_stats = {0};
 
 static void handle_memory_acquisition_failure(memory_source_t source) {
     time_t now = time(NULL);
-    
+
     if (source == MEMORY_SOURCE_SBRK) {
         mem_stats.sbrk_failures++;
     } else {
         mem_stats.mmap_failures++;
     }
-    
+
     mem_stats.last_failure_time = now;
-    
+
     /* Enter emergency mode if failures are frequent */
     if (mem_stats.sbrk_failures + mem_stats.mmap_failures > 10 &&
         (now - mem_stats.last_failure_time) < 60) {
         mem_stats.emergency_mode = true;
-        
+
         /* Attempt memory pressure relief */
         trigger_emergency_cleanup();
     }
@@ -469,10 +471,10 @@ static void handle_memory_acquisition_failure(memory_source_t source) {
 static void trigger_emergency_cleanup(void) {
     /* Flush thread-local caches */
     cleanup_thread_cache();
-    
+
     /* Attempt to coalesce free blocks more aggressively */
     aggressive_heap_consolidation();
-    
+
     /* Consider releasing mmap regions back to system */
     gc_mmap_regions();
 }
@@ -492,26 +494,26 @@ void test_memory_sourcing(void) {
     assert(small_ptr != NULL);
     memory_region_t* small_region = find_memory_region(small_ptr);
     assert(small_region && !small_region->is_mmap);
-    
+
     /* Test large allocation via mmap */
     void* large_ptr = acquire_memory(256 * 1024);
     assert(large_ptr != NULL);
     memory_region_t* large_region = find_memory_region(large_ptr);
     assert(large_region && large_region->is_mmap);
-    
+
     /* Test memory pressure conditions */
     struct rlimit rlim;
     getrlimit(RLIMIT_AS, &rlim);
-    
+
     /* Temporarily limit virtual memory */
     rlim.rlim_cur = rlim.rlim_cur / 2;
     setrlimit(RLIMIT_AS, &rlim);
-    
+
     /* Verify graceful failure */
     void* pressure_ptr = acquire_memory(1024 * 1024 * 1024);  /* 1GB */
     assert(pressure_ptr == NULL);
     assert(last_error == ALLOC_ERROR_OUT_OF_MEMORY);
-    
+
     /* Restore limits */
     rlim.rlim_cur = rlim.rlim_max;
     setrlimit(RLIMIT_AS, &rlim);
@@ -530,8 +532,3 @@ This chapter implemented a robust memory sourcing system that efficiently combin
 6. **Performance Analysis**: Mathematical optimization of source selection threshold
 
 The memory sourcing layer now provides a solid foundation for implementing allocation algorithms. In Chapter 04, we'll build the core `malloc()` implementation using these memory acquisition primitives.
-
----
-
-**Next**: [Chapter 04: Basic malloc Implementation](04-basic-malloc.md)
-**Previous**: [Chapter 02: Block Structure and Alignment](02-block-structure.md)

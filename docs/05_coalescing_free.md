@@ -38,11 +38,11 @@ typedef struct block {
     size_t size;           /* Size of user data area */
     uint32_t is_free;      /* 0 = allocated, 1 = free */
     uint32_t magic;        /* Magic number for integrity */
-    
+
     /* Free list pointers (only valid when is_free == 1) */
     struct block* prev_free;
     struct block* next_free;
-    
+
     /* Boundary tag at end of block - contains size again */
     /* Located at: (char*)block + HEADER_SIZE + size - sizeof(size_t) */
 } block_t;
@@ -53,10 +53,12 @@ typedef struct block {
 
 ### Footer Management
 
+The footer contains a copy of the block size, positioned at the end of the user data area. This footer enables constant-time access to the previous block's size, which is essential for backward coalescing. We must maintain footer consistency whenever block sizes change, ensuring the footer always reflects the current block size. The footer management functions:
+
 ```c
 static void set_footer(block_t* block) {
     if (!block || block->size < FOOTER_SIZE) return;
-    
+
     /* Footer is located at end of user data area */
     char* footer_addr = (char*)block + HEADER_SIZE + block->size - FOOTER_SIZE;
     size_t* footer = (size_t*)footer_addr;
@@ -65,7 +67,7 @@ static void set_footer(block_t* block) {
 
 static size_t get_footer(block_t* block) {
     if (!block || block->size < FOOTER_SIZE) return 0;
-    
+
     char* footer_addr = (char*)block + HEADER_SIZE + block->size - FOOTER_SIZE;
     size_t* footer = (size_t*)footer_addr;
     return *footer;
@@ -78,33 +80,35 @@ static bool verify_footer(block_t* block) {
 
 ### Previous Block Detection
 
+Finding the previous physical block requires reading the footer of the preceding block, which contains its size. We subtract this size plus the header size from the current block address to locate the previous block's header. This operation enables backward coalescing without maintaining explicit backward pointers in every block, reducing memory overhead. The implementation:
+
 ```c
 block_t* get_prev_block(block_t* block) {
     if (!block) return NULL;
-    
+
     /* Check if we're at the heap start */
     if ((char*)block <= (char*)heap.heap_start) {
         return NULL;
     }
-    
+
     /* Previous block's footer immediately precedes our header */
     char* prev_footer_addr = (char*)block - sizeof(size_t);
     size_t* prev_footer = (size_t*)prev_footer_addr;
     size_t prev_size = *prev_footer;
-    
+
     /* Calculate previous block header location */
     char* prev_block_addr = (char*)block - HEADER_SIZE - prev_size;
     block_t* prev_block = (block_t*)prev_block_addr;
-    
+
     /* Verify integrity */
     if (verify_block_integrity(prev_block) != BLOCK_VALID) {
         return NULL;
     }
-    
+
     if (!verify_footer(prev_block)) {
         return NULL;
     }
-    
+
     return prev_block;
 }
 ```
@@ -116,33 +120,33 @@ block_t* get_prev_block(block_t* block) {
 ```c
 void free(void* ptr) {
     if (!ptr) return;  /* free(NULL) is safe */
-    
+
     /* Convert user pointer to block header */
     block_t* block = get_block_from_ptr(ptr);
-    
+
     /* Comprehensive integrity verification */
     if (!validate_free_request(block, ptr)) {
         return;  /* Error handling performed in validation */
     }
-    
+
     /* Update heap statistics */
     pthread_mutex_lock(&heap.heap_mutex);
     heap.total_allocated -= block->size;
     heap.allocation_count--;
-    
+
     /* Convert to free block */
     initialize_free_block(block, block->size);
     set_footer(block);
-    
+
     /* Perform immediate coalescing */
     block_t* coalesced_block = coalesce_blocks(block);
-    
+
     /* Add final coalesced block to free list */
     add_to_free_list(coalesced_block);
-    
+
     heap.total_free += coalesced_block->size;
     pthread_mutex_unlock(&heap.heap_mutex);
-    
+
     /* Handle mmap allocations separately */
     if (is_mmap_allocation(ptr)) {
         handle_mmap_free(ptr);
@@ -156,18 +160,18 @@ void free(void* ptr) {
 static bool validate_free_request(block_t* block, void* ptr) {
     /* Pointer alignment check */
     if (!IS_ALIGNED(ptr)) {
-        heap_error_handler(ALLOC_ERROR_MISALIGNED, 
+        heap_error_handler(ALLOC_ERROR_MISALIGNED,
                           "free(): misaligned pointer", ptr);
         return false;
     }
-    
+
     /* Heap bounds validation */
     if (!is_valid_heap_pointer(ptr)) {
         heap_error_handler(ALLOC_ERROR_INVALID_POINTER,
                           "free(): pointer not in heap", ptr);
         return false;
     }
-    
+
     /* Block integrity verification */
     block_status_t status = verify_block_integrity(block);
     if (status != BLOCK_VALID) {
@@ -186,21 +190,21 @@ static bool validate_free_request(block_t* block, void* ptr) {
         }
         return false;
     }
-    
+
     /* Double-free detection */
     if (block->is_free) {
         heap_error_handler(ALLOC_ERROR_DOUBLE_FREE,
                           "free(): double free attempt", ptr);
         return false;
     }
-    
+
     /* Footer integrity (if using boundary tags) */
     if (!verify_footer(block)) {
         heap_error_handler(ALLOC_ERROR_CORRUPTION,
                           "free(): footer corruption detected", ptr);
         return false;
     }
-    
+
     return true;
 }
 ```
@@ -219,16 +223,16 @@ static void heap_error_handler(alloc_error_t error, const char* message, void* p
     /* Log error details */
     fprintf(stderr, "HEAP ERROR: %s at address %p\n", message, ptr);
     fprintf(stderr, "Error code: %s\n", get_error_string(error));
-    
+
     /* Call user handler if set */
     if (user_error_handler) {
         user_error_handler(error, message, ptr);
         return;
     }
-    
+
     /* Default behavior: print diagnostics and abort */
     print_heap_diagnostics(ptr);
-    
+
     /* For production, might want to gracefully handle instead of abort */
     #ifdef DEBUG
         abort();  /* Immediate crash for debugging */
@@ -248,7 +252,7 @@ Coalescing examines four possible states based on the freedom of previous and ne
 
 1. **Case 1**: Previous and next both allocated → No coalescing
 2. **Case 2**: Previous allocated, next free → Forward coalesce
-3. **Case 3**: Previous free, next allocated → Backward coalesce  
+3. **Case 3**: Previous free, next allocated → Backward coalesce
 4. **Case 4**: Previous and next both free → Bidirectional coalesce
 
 ### Implementation
@@ -256,13 +260,13 @@ Coalescing examines four possible states based on the freedom of previous and ne
 ```c
 block_t* coalesce_blocks(block_t* block) {
     assert(block && block->is_free);
-    
+
     block_t* prev_block = get_prev_block(block);
     block_t* next_block = get_next_block(block);
-    
+
     bool prev_free = (prev_block && prev_block->is_free);
     bool next_free = (next_block && next_block->is_free);
-    
+
     if (!prev_free && !next_free) {
         /* Case 1: No coalescing possible */
         return block;
@@ -287,20 +291,20 @@ block_t* coalesce_blocks(block_t* block) {
 ```c
 static block_t* coalesce_forward(block_t* current, block_t* next) {
     assert(current && next && current->is_free && next->is_free);
-    
+
     /* Remove next block from free list */
     remove_from_free_list(next);
-    
+
     /* Expand current block to include next block */
     size_t total_size = current->size + HEADER_SIZE + next->size;
     current->size = total_size;
-    
+
     /* Update footer */
     set_footer(current);
-    
+
     /* Clear next block header for safety */
     memset(next, 0xDD, HEADER_SIZE);  /* Debug pattern */
-    
+
     return current;
 }
 ```
@@ -310,17 +314,17 @@ static block_t* coalesce_forward(block_t* current, block_t* next) {
 ```c
 static block_t* coalesce_backward(block_t* prev, block_t* current) {
     assert(prev && current && prev->is_free && current->is_free);
-    
+
     /* Expand previous block to include current block */
     size_t total_size = prev->size + HEADER_SIZE + current->size;
     prev->size = total_size;
-    
+
     /* Update footer */
     set_footer(prev);
-    
+
     /* Clear current block header for safety */
     memset(current, 0xDD, HEADER_SIZE);
-    
+
     return prev;
 }
 ```
@@ -331,21 +335,21 @@ static block_t* coalesce_backward(block_t* prev, block_t* current) {
 static block_t* coalesce_bidirectional(block_t* prev, block_t* current, block_t* next) {
     assert(prev && current && next);
     assert(prev->is_free && current->is_free && next->is_free);
-    
+
     /* Remove next block from free list (prev will remain) */
     remove_from_free_list(next);
-    
+
     /* Calculate total size of all three blocks */
     size_t total_size = prev->size + HEADER_SIZE + current->size + HEADER_SIZE + next->size;
     prev->size = total_size;
-    
+
     /* Update footer */
     set_footer(prev);
-    
+
     /* Clear merged block headers for safety */
     memset(current, 0xDD, HEADER_SIZE);
     memset(next, 0xDD, HEADER_SIZE);
-    
+
     return prev;
 }
 ```
@@ -368,14 +372,14 @@ static const size_t MAX_DEFERRED_FREES = 100;
 
 void free_deferred(void* ptr) {
     if (!ptr) return;
-    
+
     /* Add to deferred list */
     deferred_free_t* entry = malloc(sizeof(deferred_free_t));
     entry->ptr = ptr;
     entry->next = deferred_free_list;
     deferred_free_list = entry;
     deferred_free_count++;
-    
+
     /* Process batch when threshold reached */
     if (deferred_free_count >= MAX_DEFERRED_FREES) {
         process_deferred_frees();
@@ -385,7 +389,7 @@ void free_deferred(void* ptr) {
 static void process_deferred_frees(void) {
     /* Sort deferred frees by address for optimal coalescing */
     qsort_deferred_frees();
-    
+
     /* Process in address order */
     deferred_free_t* current = deferred_free_list;
     while (current) {
@@ -394,7 +398,7 @@ static void process_deferred_frees(void) {
         free(current);
         current = next;
     }
-    
+
     deferred_free_list = NULL;
     deferred_free_count = 0;
 }
@@ -407,14 +411,14 @@ For allocators using size classes, coalescing must consider alignment with class
 ```c
 static block_t* coalesce_with_size_classes(block_t* block) {
     block_t* coalesced = coalesce_blocks(block);
-    
+
     /* Check if coalesced block should be split to match size classes */
     size_t coalesced_size = coalesced->size;
-    
+
     /* Find optimal size class alignment */
     int size_class = get_optimal_size_class(coalesced_size);
     size_t class_size = get_class_size(size_class);
-    
+
     if (coalesced_size > class_size * 2) {
         /* Split large coalesced block */
         block_t* remainder = split_block(coalesced, class_size);
@@ -422,7 +426,7 @@ static block_t* coalesce_with_size_classes(block_t* block) {
             add_to_free_list(remainder);
         }
     }
-    
+
     return coalesced;
 }
 ```
@@ -446,7 +450,7 @@ Boundary tags add space overhead but enable $O(1)$ coalescing:
 
 **Overhead Analysis**:
 - Small allocations (≤64 bytes): 37.5% overhead
-- Medium allocations (256 bytes): 9.4% overhead  
+- Medium allocations (256 bytes): 9.4% overhead
 - Large allocations (≥1KB): <2.4% overhead
 
 ### Optimization Techniques
@@ -458,7 +462,7 @@ typedef struct optimized_block {
     size_t size;
     uint32_t is_free;
     uint32_t magic;
-    
+
     /* Footer only exists for free blocks */
     /* For allocated blocks, user data starts immediately */
     union {
@@ -467,7 +471,7 @@ typedef struct optimized_block {
             struct optimized_block* next_free;
             /* Footer at end: size_t size_copy */
         } free_data;
-        
+
         char user_data[1];  /* Flexible array member */
     } payload;
 } optimized_block_t;
@@ -478,15 +482,15 @@ typedef struct optimized_block {
 ```c
 static bool should_coalesce_aggressively(void) {
     pthread_mutex_lock(&heap.heap_mutex);
-    
+
     /* Calculate fragmentation metrics */
     double fragmentation_ratio = calculate_fragmentation_ratio();
     size_t largest_free_block = find_largest_free_block();
-    size_t average_allocation_size = heap.total_allocated / 
+    size_t average_allocation_size = heap.total_allocated /
                                     (heap.allocation_count + 1);
-    
+
     pthread_mutex_unlock(&heap.heap_mutex);
-    
+
     /* Aggressive coalescing conditions */
     return fragmentation_ratio > 0.25 ||                    /* >25% fragmented */
            largest_free_block < average_allocation_size * 4 || /* Small free blocks */
@@ -502,22 +506,22 @@ static bool should_coalesce_aggressively(void) {
 void test_forward_coalescing(void) {
     /* Allocate three adjacent blocks */
     void* ptr1 = malloc(64);
-    void* ptr2 = malloc(64);  
+    void* ptr2 = malloc(64);
     void* ptr3 = malloc(64);
-    
+
     assert(ptr1 && ptr2 && ptr3);
-    
+
     /* Free middle block first */
     free(ptr2);
-    
+
     /* Free first block - should coalesce forward with middle */
     free(ptr1);
-    
+
     /* Verify coalescing occurred by checking free list */
     block_t* free_block = find_free_block(128);
     assert(free_block != NULL);
     assert(free_block->size >= 128);
-    
+
     free(ptr3);
 }
 
@@ -527,19 +531,19 @@ void test_bidirectional_coalescing(void) {
     for (int i = 0; i < 5; i++) {
         ptrs[i] = malloc(64);
     }
-    
+
     /* Free outer blocks */
     free(ptrs[0]);
-    free(ptrs[2]); 
+    free(ptrs[2]);
     free(ptrs[4]);
-    
+
     /* Free middle block - should trigger bidirectional coalescing */
     free(ptrs[1]);
-    
+
     /* Should coalesce ptrs[0] and ptrs[1] */
     block_t* coalesced = find_free_block(128);
     assert(coalesced && coalesced->size >= 128);
-    
+
     free(ptrs[3]);
 }
 ```
@@ -550,28 +554,28 @@ void test_bidirectional_coalescing(void) {
 void stress_test_coalescing(void) {
     const int iterations = 10000;
     void** allocations = malloc(iterations * sizeof(void*));
-    
+
     /* Phase 1: Random allocation pattern */
     for (int i = 0; i < iterations; i++) {
         size_t size = (rand() % 1000) + 1;
         allocations[i] = malloc(size);
         assert(allocations[i] != NULL);
     }
-    
+
     /* Phase 2: Random deallocation creating fragmentation */
     for (int i = 0; i < iterations; i += 2) {
         free(allocations[i]);
         allocations[i] = NULL;
     }
-    
+
     /* Phase 3: Deallocate remaining - test coalescing under pressure */
     for (int i = 1; i < iterations; i += 2) {
         free(allocations[i]);
     }
-    
+
     /* Verify heap is efficiently coalesced */
     allocator_stats();
-    
+
     free(allocations);
 }
 ```
@@ -581,13 +585,13 @@ void stress_test_coalescing(void) {
 ```c
 void property_test_coalescing_invariants(void) {
     const int test_runs = 1000;
-    
+
     for (int run = 0; run < test_runs; run++) {
         /* Generate random allocation/deallocation sequence */
         int operations = rand() % 100 + 10;
         void** ptrs = malloc(operations * sizeof(void*));
         memset(ptrs, 0, operations * sizeof(void*));
-        
+
         for (int i = 0; i < operations; i++) {
             if (rand() % 2 && ptrs[i] == NULL) {
                 /* Allocate */
@@ -598,16 +602,16 @@ void property_test_coalescing_invariants(void) {
                 free(ptrs[i]);
                 ptrs[i] = NULL;
             }
-            
+
             /* Verify heap consistency after each operation */
             heap_consistency_check();
         }
-        
+
         /* Clean up remaining allocations */
         for (int i = 0; i < operations; i++) {
             if (ptrs[i]) free(ptrs[i]);
         }
-        
+
         free(ptrs);
     }
 }
@@ -620,38 +624,38 @@ void property_test_coalescing_invariants(void) {
 ```c
 void print_coalescing_stats(void) {
     pthread_mutex_lock(&heap.heap_mutex);
-    
+
     printf("=== Coalescing Statistics ===\n");
     printf("Forward coalesces: %zu\n", heap.stats.forward_coalesces);
     printf("Backward coalesces: %zu\n", heap.stats.backward_coalesces);
     printf("Bidirectional coalesces: %zu\n", heap.stats.bidirectional_coalesces);
     printf("Total free operations: %zu\n", heap.stats.total_frees);
-    
-    double coalesce_rate = (double)(heap.stats.forward_coalesces + 
+
+    double coalesce_rate = (double)(heap.stats.forward_coalesces +
                                    heap.stats.backward_coalesces +
-                                   heap.stats.bidirectional_coalesces) / 
+                                   heap.stats.bidirectional_coalesces) /
                           (double)heap.stats.total_frees;
-    
+
     printf("Coalescing rate: %.2f%%\n", coalesce_rate * 100.0);
-    
+
     pthread_mutex_unlock(&heap.heap_mutex);
 }
 
 void visualize_heap_fragmentation(void) {
     const int scale = 64;  /* Each character represents 64 bytes */
-    
+
     printf("Heap Layout (. = allocated, - = free, | = boundary):\n");
-    
+
     block_t* current = (block_t*)heap.heap_start;
     while (current < (block_t*)heap.heap_end) {
         int blocks = (current->size + scale - 1) / scale;
         char symbol = current->is_free ? '-' : '.';
-        
+
         for (int i = 0; i < blocks; i++) {
             printf("%c", symbol);
         }
         printf("|");
-        
+
         current = get_next_block(current);
         if (!current) break;
     }
@@ -670,8 +674,3 @@ This chapter implemented a sophisticated free operation with immediate bidirecti
 5. **Robust Testing**: Unit tests, stress tests, and property-based verification of coalescing invariants
 
 The advanced free implementation significantly reduces heap fragmentation while maintaining optimal performance characteristics. In Chapter 06, we'll explore allocation strategy alternatives and their impact on overall allocator performance.
-
----
-
-**Next**: [Chapter 06: Allocation Strategies Analysis](06-allocation-strategies.md)
-**Previous**: [Chapter 04: Basic malloc Implementation](04-basic-malloc.md)

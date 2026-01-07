@@ -43,13 +43,15 @@ Memory alignment is not merely an optimization; it's a requirement for correctne
 
 ### Alignment Requirements
 
-For a data type of size $n$ bytes, the address must be a multiple of $n$:
+For a data type of size n bytes, the address must be a multiple of n:
 
-$$\text{address} \equiv 0 \pmod{n}$$
+```
+address ≡ 0 (mod n)
+```
 
 Common alignment requirements:
 - `char`: 1-byte alignment (no requirement)
-- `short`: 2-byte alignment  
+- `short`: 2-byte alignment
 - `int`: 4-byte alignment
 - `long`: 8-byte alignment
 - `double`: 8-byte alignment
@@ -58,26 +60,32 @@ Our allocator enforces 16-byte alignment for all allocations, satisfying the str
 
 ### Alignment Calculation
 
-To align a size $s$ to boundary $a$, we use the formula:
+To align a size s to boundary a, we use the formula:
 
-$$\text{aligned\_size} = \left\lceil \frac{s}{a} \right\rceil \times a$$
+```
+aligned_size = ⌈s/a⌉ × a
+```
 
 The efficient bit manipulation implementation:
 
-$$\text{aligned\_size} = (s + a - 1) \land \neg(a - 1)$$
+```
+aligned_size = (s + a - 1) & ~(a - 1)
+```
 
-For 16-byte alignment where $a = 16 = 2^4$:
+For 16-byte alignment where a = 16 = 2^4:
 
-$$\text{aligned\_size} = (s + 15) \land \neg 15$$
-$$\text{aligned\_size} = (s + 15) \land 0xFFFFFFF0$$
+```
+aligned_size = (s + 15) & ~15
+aligned_size = (s + 15) & 0xFFFFFFF0
+```
 
 ### Example Alignment Calculations
 
 | Requested Size | Calculation | Aligned Size |
 |----------------|-------------|--------------|
-| 1 byte | $(1 + 15) \land 0xFFF0 = 16 \land 0xFFF0$ | 16 bytes |
-| 23 bytes | $(23 + 15) \land 0xFFF0 = 38 \land 0xFFF0$ | 32 bytes |
-| 64 bytes | $(64 + 15) \land 0xFFF0 = 79 \land 0xFFF0$ | 64 bytes |
+| 1 byte | (1 + 15) & 0xFFF0 = 16 & 0xFFF0 | 16 bytes |
+| 23 bytes | (23 + 15) & 0xFFF0 = 38 & 0xFFF0 | 32 bytes |
+| 64 bytes | (64 + 15) & 0xFFF0 = 79 & 0xFFF0 | 64 bytes |
 
 ## Memory Acquisition Strategies
 
@@ -130,10 +138,12 @@ void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS
 
 Our allocator employs a hybrid approach that leverages the strengths of both mechanisms:
 
-$$\text{Memory Source} = \begin{cases}
-\text{sbrk()} & \text{if } \text{size} < 128 \text{ KB} \\
-\text{mmap()} & \text{if } \text{size} \geq 128 \text{ KB}
-\end{cases}$$
+```
+Memory Source = {
+    sbrk()  if size < 128 KB
+    mmap()  if size ≥ 128 KB
+}
+```
 
 **Rationale for 128KB Threshold**:
 - **Page Alignment**: 128KB = 32 pages (assuming 4KB pages), well-suited for `mmap()`
@@ -154,7 +164,7 @@ typedef struct block {
     size_t size;           // Size of user data area (excluding header)
     uint32_t is_free;      // 0 = allocated, 1 = free
     uint32_t magic;        // Magic number for corruption detection (0xDEADBEEF)
-    
+
     // Free blocks extend with additional fields:
     struct block* prev_free;  // Previous block in free list
     struct block* next_free;  // Next block in free list
@@ -193,13 +203,17 @@ Free Block:
 
 ### Address Calculation
 
-For a block header at address $h$, the user data begins at:
+For a block header at address h, the user data begins at:
 
-$$\text{user\_ptr} = h + \text{sizeof(block\_t)}$$
+```
+user_ptr = h + sizeof(block_t)
+```
 
-Given a user pointer $p$, we recover the header:
+Given a user pointer p, we recover the header:
 
-$$\text{header\_ptr} = p - \text{sizeof(block\_t)}$$
+```
+header_ptr = p - sizeof(block_t)
+```
 
 ### Free List Management
 
@@ -260,18 +274,22 @@ The allocator's performance characteristics depend on fundamental algorithmic ch
 
 ### Space Overhead
 
-For an allocation of size $s$, the total memory footprint is:
+For an allocation of size s, the total memory footprint is:
 
-$$\text{Total Memory} = \text{sizeof(block\_t)} + \text{align\_16}(s)$$
+```
+Total Memory = sizeof(block_t) + align_16(s)
+```
 
 The overhead percentage:
 
-$$\text{Overhead} = \frac{\text{sizeof(block\_t)}}{\text{sizeof(block\_t)} + \text{align\_16}(s)} \times 100\%$$
+```
+Overhead = (sizeof(block_t) / (sizeof(block_t) + align_16(s))) × 100%
+```
 
 For small allocations, overhead dominates:
-- 8-byte allocation: $\frac{16}{16 + 16} = 50\%$ overhead
-- 64-byte allocation: $\frac{16}{16 + 64} = 20\%$ overhead
-- 1KB allocation: $\frac{16}{16 + 1024} \approx 1.5\%$ overhead
+- 8-byte allocation: 16/(16 + 16) = 50% overhead
+- 64-byte allocation: 16/(16 + 64) = 20% overhead  
+- 1KB allocation: 16/(16 + 1024) ≈ 1.5% overhead
 
 ## Architecture Summary
 
@@ -284,8 +302,4 @@ Our memory allocator implements these core architectural decisions:
 5. **Immediate Coalescing**: Merge adjacent free blocks to reduce fragmentation
 6. **Multiple Error Detection**: Magic numbers, double-free detection, boundary validation
 
-This foundation provides the mathematical rigor and architectural clarity necessary for building a production-quality allocator. In the next chapter, we'll implement the block structure and alignment calculations that form the core of our system.
-
----
-
-**Next**: [Chapter 02: Block Structure and Alignment](02-block-structure.md)
+This foundation provides the mathematical rigor and architectural clarity necessary for building a production-quality allocator.

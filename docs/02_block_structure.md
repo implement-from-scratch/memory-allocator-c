@@ -18,9 +18,9 @@ The block header serves as the control structure for every allocation in our sys
 
 typedef struct block {
     size_t size;           // Size of user data area (excluding header)
-    uint32_t is_free;      // 0 = allocated, 1 = free  
+    uint32_t is_free;      // 0 = allocated, 1 = free
     uint32_t magic;        // Magic number for corruption detection
-    
+
     // Free list pointers (only valid when is_free == 1)
     struct block* prev_free;
     struct block* next_free;
@@ -29,7 +29,7 @@ typedef struct block {
 
 ### Memory Layout Verification
 
-The compiler must arrange our structure to satisfy alignment requirements. Let's verify the layout mathematically:
+The compiler must arrange our structure to satisfy alignment requirements. We need to verify that the structure layout matches our expectations, ensuring fields are positioned correctly and the total size meets alignment constraints. This verification prevents subtle bugs that could arise from incorrect memory layout assumptions. Let's verify the layout mathematically:
 
 ```c
 #include <assert.h>
@@ -37,14 +37,14 @@ The compiler must arrange our structure to satisfy alignment requirements. Let's
 void verify_block_layout(void) {
     // Verify total structure size is 16-byte aligned
     assert(sizeof(block_t) % ALIGNMENT == 0);
-    
+
     // Verify critical field offsets
     assert(offsetof(block_t, size) == 0);
     assert(offsetof(block_t, is_free) == 8);
     assert(offsetof(block_t, magic) == 12);
     assert(offsetof(block_t, prev_free) == 16);
     assert(offsetof(block_t, next_free) == 24);
-    
+
     // Total size should be 32 bytes (16 + 16 for free list pointers)
     assert(sizeof(block_t) == 32);
 }
@@ -52,7 +52,7 @@ void verify_block_layout(void) {
 
 ### Block State Management
 
-Each block exists in one of two states, with different memory layout implications:
+Blocks transition between allocated and free states throughout their lifetime. The memory layout differs between these states because free blocks require additional metadata for list management, while allocated blocks minimize overhead. Understanding these state differences is crucial for correct pointer manipulation and memory safety. Each block exists in one of two states, with different memory layout implications:
 
 **Allocated Block**:
 - Uses only first 16 bytes of header
@@ -81,11 +81,11 @@ static inline size_t align_size(size_t size) {
 
 Let's prove this formula works correctly for our 16-byte alignment requirement:
 
-For alignment boundary $a = 16 = 2^4$:
-- Alignment mask: $a - 1 = 15 = 0x0F$ 
-- Inverse mask: $\sim(a - 1) = 0xFFFFFFF0$
+For alignment boundary a = 16 = 2^4:
+- Alignment mask: a - 1 = 15 = 0x0F 
+- Inverse mask: ~(a - 1) = 0xFFFFFFF0
 
-The formula $(size + 15) \& 0xFFFFFFF0$ effectively:
+The formula (size + 15) & 0xFFFFFFF0 effectively:
 1. Adds 15 to round up to next multiple of 16
 2. Clears the low 4 bits to enforce 16-byte boundary
 
@@ -101,11 +101,11 @@ void test_alignment_calculations(void) {
     assert(align_size(17) == 32);
     assert(align_size(31) == 32);
     assert(align_size(32) == 32);
-    
+
     // Test larger sizes
     assert(align_size(100) == 112);  // (100 + 15) & ~15 = 115 & ~15 = 112
     assert(align_size(1000) == 1008); // (1000 + 15) & ~15 = 1015 & ~15 = 1008
-    
+
     // Verify all results are 16-byte aligned
     for (size_t i = 1; i <= 1000; i++) {
         size_t aligned = align_size(i);
@@ -122,10 +122,12 @@ Converting between user pointers and block headers requires precise address arit
 
 ### User Pointer to Header Conversion
 
+When applications call free() with a pointer returned by malloc(), we need to recover the block header that precedes the user data. This conversion requires subtracting the header size from the user pointer, ensuring we account for the exact memory layout. The operation must handle NULL pointers and maintain type safety. The implementation:
+
 ```c
 static inline block_t* get_block_from_ptr(void* ptr) {
     if (!ptr) return NULL;
-    
+
     // Header is exactly one header_size before user data
     return (block_t*)((char*)ptr - HEADER_SIZE);
 }
@@ -133,10 +135,12 @@ static inline block_t* get_block_from_ptr(void* ptr) {
 
 ### Header to User Pointer Conversion
 
+After allocating a block, we must return a pointer to the user data area, not the header. This conversion adds the header size to the block address, positioning the pointer at the start of the usable memory region. This is the inverse operation of header recovery and must produce pointers that satisfy alignment requirements. The implementation:
+
 ```c
 static inline void* get_ptr_from_block(block_t* block) {
     if (!block) return NULL;
-    
+
     // User data begins immediately after header
     return (void*)((char*)block + HEADER_SIZE);
 }
@@ -154,13 +158,13 @@ static bool validate_block_address(block_t* block) {
     if (!is_aligned(block)) {
         return false;
     }
-    
+
     // User pointer must also be 16-byte aligned
     void* user_ptr = get_ptr_from_block(block);
     if (!is_aligned(user_ptr)) {
         return false;
     }
-    
+
     return true;
 }
 ```
@@ -176,7 +180,7 @@ static void initialize_allocated_block(block_t* block, size_t size) {
     block->size = size;
     block->is_free = 0;
     block->magic = MAGIC_NUMBER;
-    
+
     // Free list pointers are undefined in allocated blocks
     // They may be overwritten by user data
 }
@@ -189,7 +193,7 @@ static void initialize_free_block(block_t* block, size_t size) {
     block->size = size;
     block->is_free = 1;
     block->magic = MAGIC_NUMBER;
-    
+
     // Initialize free list pointers to NULL
     // They will be set by list management functions
     block->prev_free = NULL;
@@ -213,22 +217,22 @@ static block_status_t verify_block_integrity(block_t* block) {
     if (!validate_block_address(block)) {
         return BLOCK_MISALIGNED;
     }
-    
+
     // Check magic number
     if (block->magic != MAGIC_NUMBER) {
         return BLOCK_CORRUPT_MAGIC;
     }
-    
+
     // Check size alignment
     if (block->size % ALIGNMENT != 0) {
         return BLOCK_INVALID_SIZE;
     }
-    
+
     // Check free flag validity
     if (block->is_free != 0 && block->is_free != 1) {
         return BLOCK_INVALID_FREE_STATE;
     }
-    
+
     return BLOCK_VALID;
 }
 ```
@@ -239,9 +243,11 @@ Understanding the relationship between requested size, aligned size, and total m
 
 ### Total Memory Calculation
 
-For a user request of size $s$, the total memory consumed is:
+For a user request of size s, the total memory consumed is:
 
-$$\text{Total Memory} = \text{HEADER\_SIZE} + \text{align\_size}(s)$$
+```
+Total Memory = HEADER_SIZE + align_size(s)
+```
 
 ```c
 static size_t calculate_total_size(size_t requested_size) {
@@ -271,7 +277,7 @@ When splitting a free block, we must ensure both resulting blocks meet minimum s
 static bool can_split_block(block_t* block, size_t needed_size) {
     size_t total_size = block->size;
     size_t remaining_size = total_size - needed_size;
-    
+
     // Remaining space must accommodate header + minimum allocation
     return remaining_size >= (HEADER_SIZE + MIN_ALLOC_SIZE);
 }
@@ -280,7 +286,7 @@ static size_t calculate_split_remainder(block_t* block, size_t needed_size) {
     if (!can_split_block(block, needed_size)) {
         return 0;  // Cannot split
     }
-    
+
     return block->size - needed_size;
 }
 ```
@@ -294,7 +300,7 @@ Determining physical adjacency between blocks enables coalescing operations that
 ```c
 static block_t* get_next_block(block_t* block) {
     if (!block) return NULL;
-    
+
     // Next block starts after current block's header and data
     char* next_addr = (char*)block + HEADER_SIZE + block->size;
     return (block_t*)next_addr;
@@ -318,7 +324,7 @@ static block_t* get_prev_block(block_t* block) {
 ```c
 static bool blocks_are_adjacent(block_t* first, block_t* second) {
     if (!first || !second) return false;
-    
+
     block_t* expected_next = get_next_block(first);
     return expected_next == second;
 }
@@ -378,17 +384,17 @@ Robust testing ensures our block structure implementation maintains invariants u
 
 void test_alignment_properties(void) {
     srand(time(NULL));
-    
+
     for (int i = 0; i < 10000; i++) {
         size_t random_size = rand() % 10000 + 1;
         size_t aligned = align_size(random_size);
-        
+
         // Property 1: Result is always aligned
         assert(aligned % ALIGNMENT == 0);
-        
+
         // Property 2: Result is at least as large as input
         assert(aligned >= random_size);
-        
+
         // Property 3: Result is minimal (within one alignment boundary)
         assert(aligned < random_size + ALIGNMENT);
     }
@@ -399,15 +405,15 @@ void test_pointer_conversion_properties(void) {
     for (int i = 0; i < 1000; i++) {
         size_t size = align_size(rand() % 1000 + 1);
         block_t* block = aligned_alloc(ALIGNMENT, HEADER_SIZE + size);
-        
+
         initialize_allocated_block(block, size);
-        
+
         void* user_ptr = get_ptr_from_block(block);
         block_t* recovered_block = get_block_from_ptr(user_ptr);
-        
+
         // Round-trip conversion must be exact
         assert(recovered_block == block);
-        
+
         free(block);
     }
 }
@@ -420,12 +426,12 @@ void test_edge_cases(void) {
     // Test zero size (implementation defined behavior)
     size_t zero_aligned = align_size(0);
     assert(zero_aligned == 0);
-    
+
     // Test maximum representable size
     size_t max_size = SIZE_MAX - ALIGNMENT + 1;
     size_t max_aligned = align_size(max_size);
     assert(max_aligned == SIZE_MAX - (SIZE_MAX % ALIGNMENT));
-    
+
     // Test alignment boundary values
     for (size_t i = 1; i <= ALIGNMENT * 2; i++) {
         size_t aligned = align_size(i);
@@ -439,14 +445,9 @@ void test_edge_cases(void) {
 This chapter established the concrete implementation of our block structure with mathematically sound alignment operations. Key achievements:
 
 1. **Robust Block Header**: 32-byte structure supporting both allocated and free states
-2. **Efficient Alignment**: Bit manipulation providing $O(1)$ alignment calculations  
+2. **Efficient Alignment**: Bit manipulation providing $O(1)$ alignment calculations
 3. **Address Arithmetic**: Precise pointer conversions maintaining alignment invariants
 4. **Integrity Checking**: Multiple validation layers detecting common corruption patterns
 5. **Performance Optimization**: Compiler hints and prefetching for critical path operations
 
 The block structure now provides a solid foundation for implementing allocation algorithms. In Chapter 03, we'll examine how to acquire memory from the kernel using our hybrid `sbrk()` and `mmap()` strategy.
-
----
-
-**Next**: [Chapter 03: Memory Sourcing Strategies](03-memory-sourcing.md)
-**Previous**: [Chapter 01: Memory Fundamentals and Architecture Design](01-memory-fundamentals.md)

@@ -271,7 +271,3 @@ This project is licensed under the MIT License - see the [LICENSE](../LICENSE) f
 - ISO/IEC 9899:2018 (C18 Standard)
 - POSIX.1-2017 Memory Management
 - System V ABI (Application Binary Interface)
-
----
-
-**Start your journey**: [Chapter 01: Memory Fundamentals and Architecture Design](01-memory-fundamentals.md)

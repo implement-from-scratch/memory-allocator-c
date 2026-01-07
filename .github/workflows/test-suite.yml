@@ -16,7 +16,7 @@ jobs:
       - name: Install Test Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcunit1-dev libcheck-dev
+          sudo apt-get install -y build-essential
       
       - name: Run Unit Tests
         run: |

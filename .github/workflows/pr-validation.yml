@@ -22,9 +22,6 @@ jobs:
             clang \
             clang-format \
             clang-tidy \
-            libgtest-dev \
-            libcunit1-dev \
-            libcheck-dev \
             valgrind \
             cppcheck
       

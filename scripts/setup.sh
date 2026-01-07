@@ -15,8 +15,6 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         cppcheck \
         valgrind \
         lcov \
-        libcunit1-dev \
-        libcheck-dev \
         bear
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     echo "Installing dependencies for macOS..."

@@ -1,0 +1,132 @@
+name: C CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CC: gcc
+  CXX: g++
+
+jobs:
+  build-and-test:
+    name: Build and Test (C)
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            clang \
+            clang-format \
+            clang-tidy \
+            cppcheck \
+            valgrind \
+            lcov \
+            libcunit1-dev \
+            libcheck-dev \
+            bear
+      
+      - name: Set Compiler
+        run: |
+          if [ "${{ matrix.compiler }}" == "clang" ]; then
+            echo "CC=clang" >> $GITHUB_ENV
+            echo "CXX=clang++" >> $GITHUB_ENV
+          fi
+      
+      - name: Code Formatting Check
+        run: |
+          make format-check || (echo "Code formatting failed. Run 'make format' locally." && exit 1)
+      
+      - name: Static Analysis (clang-tidy)
+        run: |
+          make lint
+      
+      - name: Static Analysis (cppcheck)
+        run: |
+          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem src/ include/
+      
+      - name: Build (${{ matrix.build_type }})
+        run: |
+          if [ "${{ matrix.build_type }}" == "Debug" ]; then
+            make build DEBUG=1
+          else
+            make build
+          fi
+      
+      - name: Run Unit Tests
+        run: |
+          make test
+      
+      - name: Run Integration Tests
+        run: |
+          make integration-test
+        continue-on-error: true
+      
+      - name: Memory Leak Check (Valgrind)
+        if: matrix.build_type == 'Debug'
+        run: |
+          make valgrind
+      
+      - name: Code Coverage
+        if: matrix.compiler == 'gcc' && matrix.build_type == 'Debug'
+        run: |
+          make coverage
+          bash <(curl -s https://codecov.io/bash) -f coverage/coverage.info || echo "Codecov upload failed"
+      
+      - name: Upload Coverage Report
+        if: matrix.compiler == 'gcc' && matrix.build_type == 'Debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-c
+          path: build/coverage/
+      
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-c-${{ matrix.compiler }}-${{ matrix.build_type }}
+          path: build/test-results/
+
+  sanitizers:
+    name: Sanitizer Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        sanitizer: [address, undefined, thread]
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+      
+      - name: Build with ${{ matrix.sanitizer }} Sanitizer
+        run: |
+          export CC=clang
+          export CXX=clang++
+          make clean
+          make build SANITIZER=${{ matrix.sanitizer }}
+      
+      - name: Run Tests with Sanitizer
+        run: |
+          make test SANITIZER=${{ matrix.sanitizer }}

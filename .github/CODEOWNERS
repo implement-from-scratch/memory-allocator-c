@@ -1,0 +1,22 @@
+# Default owner for everything in the repo
+* @mohitmishra786
+
+# Specific ownership for workflow files
+/.github/ @mohitmishra786
+/.github/workflows/ @mohitmishra786
+
+# Source code ownership
+/src/ @mohitmishra786
+/include/ @mohitmishra786
+/tests/ @mohitmishra786
+
+# Documentation ownership
+/docs/ @mohitmishra786
+*.md @mohitmishra786
+
+# Build configuration ownership
+Makefile @mohitmishra786
+CMakeLists.txt @mohitmishra786
+Cargo.toml @mohitmishra786
+.clang-format @mohitmishra786
+.clang-tidy @mohitmishra786

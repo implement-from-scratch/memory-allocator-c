@@ -1,0 +1,37 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.out
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test artifacts
+test-results/
+coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# Rust
+target/
+Cargo.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Compilation database
+compile_commands.json
+
+# Coverage
+*.info
+lcov.info

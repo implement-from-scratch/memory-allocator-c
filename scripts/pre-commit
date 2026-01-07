@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Pre-commit hook for code quality checks
+
+echo "Running pre-commit checks..."
+
+# Check code formatting
+echo "Checking code formatting..."
+if ! make format-check; then
+    echo "[FAIL] Code formatting check failed"
+    echo "Run 'make format' to fix formatting issues"
+    exit 1
+fi
+
+# Run static analysis
+echo "Running static analysis... (lint)"
+if ! make lint; then
+    echo "[FAIL] Static analysis failed"
+    exit 1
+fi
+
+# Build project
+echo "Building project... (build)"
+if ! make build; then
+    echo "[FAIL] Build failed"
+    exit 1
+fi
+
+# Run tests
+echo "Running tests... (test)"
+if ! make test; then
+    echo "[FAIL] Tests failed"
+    exit 1
+fi
+
+echo "[OK] All pre-commit checks passed"
+exit 0

@@ -1,0 +1,107 @@
+name: Comprehensive Test Suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Test Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcunit1-dev libcheck-dev
+      
+      - name: Run Unit Tests
+        run: |
+          make test-unit
+          
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: build/test-results/unit/
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build Project
+        run: make build
+      
+      - name: Run Integration Tests
+        run: make test-integration
+      
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: build/test-results/integration/
+
+  functional-tests:
+    name: Functional Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Test Framework
+        run: |
+          pip install pytest pytest-cov
+      
+      - name: Run Functional Tests
+        run: make test-functional
+      
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functional-test-results
+          path: build/test-results/functional/
+
+  performance-tests:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build Optimized Binary
+        run: make build OPTIMIZE=1
+      
+      - name: Run Performance Tests
+        run: make test-performance
+      
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: build/benchmark-results/
+
+  stress-tests:
+    name: Stress Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build Project
+        run: make build
+      
+      - name: Run Stress Tests
+        run: make test-stress
+      
+      - name: Upload Stress Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-test-results
+          path: build/test-results/stress/

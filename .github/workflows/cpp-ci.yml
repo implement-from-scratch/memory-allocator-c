@@ -1,0 +1,68 @@
+name: C++ CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-test:
+    name: Build and Test (C++)
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        compiler: [g++, clang++]
+        cpp_standard: [17, 20]
+        build_type: [Debug, Release]
+        exclude:
+          - os: macos-latest
+            compiler: g++
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Install Dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            clang \
+            clang-format \
+            clang-tidy \
+            libgtest-dev \
+            valgrind \
+            lcov
+      
+      - name: Install Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake clang-format googletest llvm
+      
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+            -DENABLE_TESTING=ON \
+            -DENABLE_COVERAGE=${{ matrix.build_type == 'Debug' && 'ON' || 'OFF' }}
+      
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} -j
+      
+      - name: Run Tests
+        run: |
+          cd build
+          ctest --output-on-failure --verbose
+      
+      - name: Code Coverage
+        if: matrix.build_type == 'Debug' && matrix.compiler == 'g++' && runner.os == 'Linux'
+        run: |
+          make coverage
+          bash <(curl -s https://codecov.io/bash)

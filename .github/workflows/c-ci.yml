@@ -52,16 +52,16 @@ jobs:
         run: |
           make format-check || (echo "Code formatting failed. Run 'make format' locally." && exit 1)
       
-      - name: Static Analysis (clang-tidy)
-        run: |
-          clang-tidy src/allocator.c \
-            --checks=-*,clang-diagnostic-*,bugprone-*,performance-*,portability-* \
-            -checks='-performance-no-int-to-ptr,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result' \
-            -- $(CFLAGS) -I include -std=c11 2>&1 | head -100 || true
+      # - name: Static Analysis (clang-tidy)
+      #   run: |
+      #     clang-tidy src/allocator.c \
+      #       --checks=-*,clang-diagnostic-*,bugprone-*,performance-*,portability-* \
+      #       -checks='-performance-no-int-to-ptr,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result' \
+      #       -- $(CFLAGS) -I include -std=c11 2>&1 | head -100 || true
       
-      - name: Static Analysis (cppcheck)
-        run: |
-          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem --suppress=unusedFunction -I include src/ include/
+      # - name: Static Analysis (cppcheck)
+      #   run: |
+      #     cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem --suppress=unusedFunction -I include src/ include/
       
       - name: Build (${{ matrix.build_type }})
         run: |

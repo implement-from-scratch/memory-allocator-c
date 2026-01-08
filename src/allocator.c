@@ -24,7 +24,12 @@
 /* Declare sbrk() for systems where it might not be declared */
 /* stdint.h is already included via allocator.h */
 #if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200112L
-extern void *sbrk(intptr_t increment);
+  #ifdef __APPLE__
+    /* macOS uses int, not intptr_t */
+    extern void *sbrk(int increment);
+  #else
+    extern void *sbrk(intptr_t increment);
+  #endif
 #endif
 
 /* Suppress deprecation warnings for sbrk on macOS */
@@ -70,7 +75,7 @@ static void unregister_memory_region(const void *start);
 static bool should_use_mmap_for_small_allocation(size_t size);
 static void handle_memory_acquisition_failure(void);
 static void trigger_emergency_cleanup(void);
-static bool validate_free_request(block_t *block, void *ptr);
+static bool validate_free_request(const block_t *block, const void *ptr);
 
 /* Allocator Initialization */
 int allocator_init(void)
@@ -89,7 +94,8 @@ int allocator_init(void)
 
     /* Get initial program break */
     heap.program_break = sbrk(0);
-    if (heap.program_break == (void *)-1) {
+    /* NOLINTNEXTLINE(performance-no-int-to-ptr) - sbrk returns (void *)-1 on error */
+    if (heap.program_break == (void *)(intptr_t)-1) {
         pthread_mutex_destroy(&heap.heap_mutex);
         return -1;
     }
@@ -350,8 +356,14 @@ void *acquire_memory_sbrk(size_t size)
     /* Pool exhausted - extend heap */
     size_t extension_size = (aligned_size > 65536) ? aligned_size : 65536; /* 64KB chunks */
 
-    void *new_memory = sbrk(extension_size);
-    if (new_memory == (void *)-1) {
+    /* NOLINTNEXTLINE(bugprone-narrowing-conversions) - sbrk requires int/intptr_t */
+    #ifdef __APPLE__
+        void *new_memory = sbrk((int)extension_size);
+    #else
+        void *new_memory = sbrk((intptr_t)extension_size);
+    #endif
+    /* NOLINTNEXTLINE(performance-no-int-to-ptr) - sbrk returns (void *)-1 on error */
+    if (new_memory == (void *)(intptr_t)-1) {
         pthread_mutex_unlock(&pool_mutex);
         last_error = ALLOC_ERROR_OUT_OF_MEMORY;
         handle_memory_acquisition_failure();

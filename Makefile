@@ -22,9 +22,13 @@ LIBS = -lpthread -lm
 
 # Build Mode Configuration
 DEBUG ?= 0
+OPTIMIZE ?= 0
 ifeq ($(DEBUG), 1)
     CFLAGS += -g3 -O0 -DDEBUG -fno-omit-frame-pointer
     BUILD_TYPE = debug
+else ifeq ($(OPTIMIZE), 1)
+    CFLAGS += -O3 -DNDEBUG -fomit-frame-pointer -march=native
+    BUILD_TYPE = optimized
 else
     CFLAGS += -O3 -DNDEBUG -fomit-frame-pointer
     BUILD_TYPE = release
@@ -175,7 +179,7 @@ lint:
 		clang-tidy $(SOURCES) \
 			--checks=-*,clang-diagnostic-*,bugprone-*,performance-*,portability-* \
 			--warnings-as-errors= \
-			-- $(CFLAGS) $(INCLUDES) -std=c11 || true; \
+			-- $(CFLAGS) $(INCLUDES) -std=c11 -Wno-error || true; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
 		echo "Running cppcheck..."; \

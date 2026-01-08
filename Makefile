@@ -172,7 +172,10 @@ lint:
 	@echo "Running static analysis..."
 	@if command -v clang-tidy >/dev/null 2>&1; then \
 		echo "Running clang-tidy..."; \
-		clang-tidy $(SOURCES) -- $(CFLAGS) $(INCLUDES) -std=c11 || true; \
+		clang-tidy $(SOURCES) \
+			--checks=-*,clang-diagnostic-*,bugprone-*,performance-*,portability-* \
+			--warnings-as-errors= \
+			-- $(CFLAGS) $(INCLUDES) -std=c11 || true; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
 		echo "Running cppcheck..."; \

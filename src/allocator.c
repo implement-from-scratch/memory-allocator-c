@@ -158,12 +158,13 @@ block_t *get_next_block(block_t *block)
     return (block_t *)next_addr;
 }
 
-bool blocks_are_adjacent(block_t *first, block_t *second)
+// cppcheck-suppress unusedFunction
+bool blocks_are_adjacent(const block_t *first, const block_t *second)
 {
     if (!first || !second)
         return false;
 
-    block_t *expected_next = get_next_block(first);
+    const block_t *expected_next = get_next_block((block_t *)first);
     return expected_next == second;
 }
 
@@ -237,7 +238,7 @@ block_t *find_free_block(size_t size)
 }
 
 /* Block Splitting */
-bool can_split_block(block_t *block, size_t needed_size)
+bool can_split_block(const block_t *block, size_t needed_size)
 {
     if (!block)
         return false;
@@ -286,7 +287,7 @@ static void register_memory_region(void *start, size_t size, bool is_mmap)
     pthread_mutex_unlock(&region_mutex);
 }
 
-static memory_region_t *find_memory_region(void *ptr)
+static memory_region_t *find_memory_region(const void *ptr)
 {
     pthread_mutex_lock(&region_mutex);
 
@@ -306,7 +307,7 @@ static memory_region_t *find_memory_region(void *ptr)
     return NULL;
 }
 
-static void unregister_memory_region(void *start)
+static void unregister_memory_region(const void *start)
 {
     pthread_mutex_lock(&region_mutex);
 
@@ -399,6 +400,7 @@ void *acquire_memory_mmap(size_t size)
     return ptr;
 }
 
+// cppcheck-suppress unusedFunction
 int release_memory_mmap(void *ptr, size_t size)
 {
     (void)size; /* Suppress unused parameter warning */
@@ -564,6 +566,7 @@ void free(void *ptr)
     add_to_free_list(block);
 }
 
+// cppcheck-suppress unusedFunction
 void *calloc(size_t nmemb, size_t size)
 {
     /* Check for overflow */
@@ -582,6 +585,7 @@ void *calloc(size_t nmemb, size_t size)
     return ptr;
 }
 
+// cppcheck-suppress unusedFunction
 void *realloc(void *ptr, size_t size)
 {
     if (!ptr) {
@@ -640,16 +644,18 @@ static void trigger_emergency_cleanup(void)
 }
 
 /* Utility Functions */
+// cppcheck-suppress unusedFunction
 bool is_valid_heap_pointer(void *ptr)
 {
     if (!ptr)
         return false;
 
     /* Check if pointer falls within known memory regions */
-    memory_region_t *region = find_memory_region(ptr);
+    const memory_region_t *region = find_memory_region(ptr);
     return region != NULL;
 }
 
+// cppcheck-suppress unusedFunction
 const char *get_error_string(alloc_error_t error)
 {
     switch (error) {
@@ -672,6 +678,7 @@ const char *get_error_string(alloc_error_t error)
     }
 }
 
+// cppcheck-suppress unusedFunction
 void allocator_stats(void)
 {
     pthread_mutex_lock(&heap.heap_mutex);
@@ -696,6 +703,7 @@ void allocator_stats(void)
     pthread_mutex_unlock(&heap.heap_mutex);
 }
 
+// cppcheck-suppress unusedFunction
 void allocator_cleanup(void)
 {
     if (!allocator_initialized)

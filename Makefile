@@ -67,7 +67,7 @@ all: build
 
 # Build targets
 .PHONY: build
-build: $(STATIC_LIB) $(SHARED_LIB)
+build: $(BUILD_DIR) $(STATIC_LIB) $(SHARED_LIB)
 
 # Create build directory
 $(BUILD_DIR):
@@ -76,6 +76,7 @@ $(BUILD_DIR):
 # Compile source files
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
 	@echo "Compiling $< ($(BUILD_TYPE))"
+	@mkdir -p $(dir $@)
 	@$(CC) $(CFLAGS) $(INCLUDES) -fPIC -c $< -o $@
 
 # Create static library
@@ -95,6 +96,7 @@ endif
 # Test compilation
 $(BUILD_DIR)/test_%.o: $(TEST_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
 	@echo "Compiling test $<"
+	@mkdir -p $(dir $@)
 	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # Test executables

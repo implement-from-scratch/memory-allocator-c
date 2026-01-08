@@ -149,7 +149,7 @@ static inline void *get_ptr_from_block(block_t *block)
 /* Block Navigation */
 block_t *get_next_block(block_t *block);
 block_t *get_prev_block(block_t *block);
-bool blocks_are_adjacent(block_t *first, block_t *second);
+bool blocks_are_adjacent(const block_t *first, const block_t *second);
 
 /* Free List Management */
 void add_to_free_list(block_t *block);
@@ -159,7 +159,7 @@ block_t *find_free_block(size_t size);
 /* Block Operations */
 block_t *split_block(block_t *block, size_t size);
 block_t *coalesce_blocks(block_t *block);
-bool can_split_block(block_t *block, size_t needed_size);
+bool can_split_block(const block_t *block, size_t needed_size);
 
 /* Thread-Local Cache */
 extern __thread thread_cache_t *thread_cache;
@@ -169,7 +169,7 @@ void *cache_alloc(size_t size);
 void cache_free(void *ptr, size_t size);
 
 /* Debugging and Validation */
-bool is_valid_heap_pointer(void *ptr);
+bool is_valid_heap_pointer(const void *ptr);
 void heap_consistency_check(void);
 void print_heap_layout(void);
 void print_free_list(void);
@@ -189,6 +189,7 @@ void set_error_handler(void (*handler)(alloc_error_t, const char *));
 #define MIN_BLOCK_SIZE (HEADER_SIZE + MIN_ALLOC_SIZE)
 
 /* Size Class Helpers for Thread Cache */
+// cppcheck-suppress unusedFunction
 static inline int get_size_class(size_t size)
 {
     if (size <= 16)
@@ -208,6 +209,7 @@ static inline int get_size_class(size_t size)
     return 7; /* Too large for cache */
 }
 
+// cppcheck-suppress unusedFunction
 static inline size_t get_class_size(int class)
 {
     static const size_t sizes[] = {16, 32, 64, 128, 256, 512, 1024};

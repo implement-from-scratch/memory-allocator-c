@@ -21,6 +21,12 @@
 #include <time.h>
 #include <unistd.h>
 
+/* Declare sbrk() for systems where it might not be declared */
+/* stdint.h is already included via allocator.h */
+#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200112L
+extern void *sbrk(intptr_t increment);
+#endif
+
 /* Suppress deprecation warnings for sbrk on macOS */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -59,8 +65,8 @@ static memory_stats_t mem_stats = {0};
 
 /* Function prototypes for internal functions */
 static void register_memory_region(void *start, size_t size, bool is_mmap);
-static memory_region_t *find_memory_region(void *ptr);
-static void unregister_memory_region(void *start);
+static memory_region_t *find_memory_region(const void *ptr);
+static void unregister_memory_region(const void *start);
 static bool should_use_mmap_for_small_allocation(size_t size);
 static void handle_memory_acquisition_failure(void);
 static void trigger_emergency_cleanup(void);
@@ -645,7 +651,7 @@ static void trigger_emergency_cleanup(void)
 
 /* Utility Functions */
 // cppcheck-suppress unusedFunction
-bool is_valid_heap_pointer(void *ptr)
+bool is_valid_heap_pointer(const void *ptr)
 {
     if (!ptr)
         return false;
@@ -725,7 +731,7 @@ void allocator_cleanup(void)
 }
 
 /* Missing function implementations */
-static bool validate_free_request(block_t *block, void *ptr)
+static bool validate_free_request(const block_t *block, const void *ptr)
 {
     /* Check if already free (double free detection) */
     if (block->is_free) {

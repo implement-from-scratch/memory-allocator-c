@@ -20,9 +20,9 @@
 /* Configuration Constants */
 #define ALIGNMENT 16
 #define MAGIC_NUMBER 0xDEADBEEF
-#define MMAP_THRESHOLD ((size_t)(128 * 1024))         /* 128KB threshold for mmap vs sbrk */
-#define MIN_ALLOC_SIZE (sizeof(void *) * 2) /* Minimum allocation size */
-#define MAX_THREAD_CACHE_SIZE (64 * 1024)   /* Thread-local cache limit */
+#define MMAP_THRESHOLD ((size_t)(128 * 1024)) /* 128KB threshold for mmap vs sbrk */
+#define MIN_ALLOC_SIZE (sizeof(void *) * 2)   /* Minimum allocation size */
+#define MAX_THREAD_CACHE_SIZE (64 * 1024)     /* Thread-local cache limit */
 
 /* Alignment Macros */
 #define ALIGN_SIZE(size) (((size) + ALIGNMENT - 1) & ~(ALIGNMENT - 1))

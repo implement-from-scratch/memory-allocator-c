@@ -24,12 +24,12 @@
 /* Declare sbrk() for systems where it might not be declared */
 /* stdint.h is already included via allocator.h */
 #if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200112L
-  #ifdef __APPLE__
-    /* macOS uses int, not intptr_t */
-    extern void *sbrk(int increment);
-  #else
-    extern void *sbrk(intptr_t increment);
-  #endif
+    #ifdef __APPLE__
+/* macOS uses int, not intptr_t */
+extern void *sbrk(int increment);
+    #else
+extern void *sbrk(intptr_t increment);
+    #endif
 #endif
 
 /* Suppress deprecation warnings for sbrk on macOS */
@@ -356,12 +356,12 @@ void *acquire_memory_sbrk(size_t size)
     /* Pool exhausted - extend heap */
     size_t extension_size = (aligned_size > 65536) ? aligned_size : 65536; /* 64KB chunks */
 
-    /* NOLINTNEXTLINE(bugprone-narrowing-conversions) - sbrk requires int/intptr_t */
-    #ifdef __APPLE__
-        void *new_memory = sbrk((int)extension_size);
-    #else
-        void *new_memory = sbrk((intptr_t)extension_size);
-    #endif
+/* NOLINTNEXTLINE(bugprone-narrowing-conversions) - sbrk requires int/intptr_t */
+#ifdef __APPLE__
+    void *new_memory = sbrk((int)extension_size);
+#else
+    void *new_memory = sbrk((intptr_t)extension_size);
+#endif
     /* NOLINTNEXTLINE(performance-no-int-to-ptr) - sbrk returns (void *)-1 on error */
     if (new_memory == (void *)(intptr_t)-1) {
         pthread_mutex_unlock(&pool_mutex);
